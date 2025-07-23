@@ -19,6 +19,12 @@ export interface IFindUserFilter {
 
 export interface IUser extends Omit<IDBUser, 'salt' | 'hash'> {}
 
+export interface IRequestUser {
+  _id: string;
+  name: string;
+  email: string;
+}
+
 export interface IUserSignInput {
   email: string;
   password: string;
