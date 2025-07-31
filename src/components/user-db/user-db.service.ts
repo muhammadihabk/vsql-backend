@@ -1,5 +1,6 @@
 import { docker } from '../../config/user-docker/user-docker.config';
 import {
+  DB_USER_HOST,
   IBuildQueryUserInput,
   IExecQueryOptions,
   ITableRow,
@@ -23,7 +24,6 @@ async function createDBUser(options: any) {
     container,
     query: {
       text: checkUserSql,
-      type: QueryType.Root,
     },
   });
   const lines = checkUserResult.split('\n');
@@ -37,8 +37,8 @@ async function createDBUser(options: any) {
 
   const dbName = generateDBName(userId);
   const createUserSql = `
-    CREATE USER '${userName}'@'%' IDENTIFIED BY '${newUserPassword}';
-    GRANT CREATE, SELECT, INSERT, UPDATE, DELETE, REFERENCES, ALTER, DROP ON \`${dbName}\`.* TO '${userName}'@'%';
+    CREATE USER '${userName}'@'${DB_USER_HOST}' IDENTIFIED BY '${newUserPassword}';
+    GRANT CREATE, SELECT, INSERT, UPDATE, DELETE, REFERENCES, ALTER, DROP ON \`${dbName}\`.* TO '${userName}'@'${DB_USER_HOST}';
     FLUSH PRIVILEGES;
   `;
 
@@ -47,7 +47,6 @@ async function createDBUser(options: any) {
     container,
     query: {
       text: createUserSql,
-      type: QueryType.Root,
     },
   };
   await execQuery(execQueryOptions);
@@ -57,21 +56,26 @@ async function createDBUser(options: any) {
 async function execQuery(options: IExecQueryOptions) {
   const { userId, container, query: inQuery } = options;
 
-  let userName = process.env.DB_ROOT_USER!;
-  let query = inQuery.text;
-  if (userId !== process.env.DB_ROOT_USER) {
+  let userName = undefined;
+  let query = undefined;
+  if (userId === process.env.DB_ROOT_USER) {
+    userName = process.env.DB_ROOT_USER!;
+    query = inQuery.text;
+  } else {
     userName = generateUserName(userId);
     const dbName = generateDBName(userId);
     if (inQuery.type === 'DDL') {
       query = `
-      DROP DATABASE IF EXISTS ${dbName};
-      CREATE DATABASE ${dbName};
-      USE ${generateDBName(userId)};
-      ${inQuery.text}`;
+        DROP DATABASE IF EXISTS ${dbName};
+        CREATE DATABASE ${dbName};
+        USE ${dbName};
+        ${inQuery.text}
+      `;
     } else {
       query = `
-      USE ${dbName};
-      ${inQuery.text}`;
+        USE ${dbName};
+        ${inQuery.text}
+      `;
     }
   }
 
@@ -175,7 +179,10 @@ async function parseDockerStream(stream: any, exec: any): Promise<any> {
 
       stream.resume();
     });
-  } catch (error) {}
+  } catch (error) {
+    console.log(error);
+    throw new Error();
+  }
 }
 
 function getSanitizedSQLError(errorMessage: any) {
@@ -303,6 +310,9 @@ function buildQuery(options: IBuildQueryUserInput) {
 }
 
 function parseQueryResultResponse(data: string) {
+  if (!data) {
+    return undefined;
+  }
   const lines = data.trim().split('\n');
 
   if (lines.length === 0) {
@@ -329,10 +339,30 @@ function parseQueryResultResponse(data: string) {
   };
 }
 
+async function endSession(options: IUserContainerOptions) {
+  const { userId, container } = options;
+  const text = `
+        DROP USER IF EXISTS '${generateUserName(userId)}'@'${DB_USER_HOST}';
+        FLUSH PRIVILEGES;
+        DROP DATABASE IF EXISTS \`${generateDBName(userId)}\`;
+      `;
+
+  const execQueryOptions = {
+    userId: process.env.DB_ROOT_USER!,
+    container,
+    query: {
+      text,
+    },
+  };
+
+  return await execQuery(execQueryOptions);
+}
+
 export default {
   createDBUser,
   execQuery,
   getTablesDetails,
   buildQuery,
   parseQueryResultResponse,
+  endSession,
 };

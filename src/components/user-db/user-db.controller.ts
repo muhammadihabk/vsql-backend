@@ -12,7 +12,7 @@ function getUserAndContainer(req: Request) {
   }
 
   const options: IUserQuery = req.body;
-  const databaseVendor = options.options?.database?.toLowerCase();
+  const databaseVendor = options?.options?.database?.toLowerCase();
   if (!databaseVendor) {
     return { error: { status: 400, message: 'Missing database vendor' } };
   }
@@ -33,34 +33,39 @@ function getUserAndContainer(req: Request) {
 // TODO: Merge code of /build-schema and /exec-query and move userDbService.createDBUser to
 // when user login. Maybe?
 dbController.post('/build-schema', async (req, res) => {
-  const { user, container, error } = getUserAndContainer(req);
-  if (error) {
-    return res.status(error.status).send(error.message);
+  try {
+    const { user, container, error } = getUserAndContainer(req);
+    if (error) {
+      return res.status(error.status).send({ error: error.message });
+    }
+
+    await userDbService.createDBUser({ userId: user._id, container });
+
+    const options: IUserQuery = req.body;
+    const execQueryOptions = {
+      userId: user._id,
+      container,
+      query: {
+        text: options.query as string,
+        type: QueryType.DDL,
+      },
+    };
+    await userDbService.execQuery(execQueryOptions);
+
+    res.sendStatus(200);
+  } catch (error) {
+    console.error('Build schema error:', error);
+    res.sendStatus(500);
   }
-
-  await userDbService.createDBUser({ userId: user._id, container });
-
-  const options: IUserQuery = req.body;
-  const execQueryOptions = {
-    userId: user._id,
-    container,
-    query: {
-      text: options.query as string,
-      type: QueryType.DDL,
-    },
-  };
-  await userDbService.execQuery(execQueryOptions);
-
-  res.sendStatus(200);
 });
 
 dbController.post('/exec-query', async (req, res) => {
-  const { user, container, error } = getUserAndContainer(req);
-  if (error) {
-    return res.status(error.status).send(error.message);
-  }
-
   try {
+    const { user, container, error } = getUserAndContainer(req);
+    if (error) {
+      return res.status(error.status).send({ error: error.message });
+    }
+
     const options: IUserQuery = req.body;
     const execQueryOptions = {
       userId: user._id,
@@ -70,24 +75,29 @@ dbController.post('/exec-query', async (req, res) => {
         type: QueryType.DML,
       },
     };
-    const { response } = await userDbService.execQuery(execQueryOptions);
+    const { response, error: execQueryError } = await userDbService.execQuery(
+      execQueryOptions
+    );
+    if (execQueryError) {
+      throw new Error(execQueryError);
+    }
 
     const parsedResponse = userDbService.parseQueryResultResponse(response);
 
     return res.json({ response: parsedResponse });
-  } catch (err) {
-    console.error('Exec query error:', err);
-    res.status(500).send('Internal Server Error');
+  } catch (error) {
+    console.error('Exec query error:', error);
+    res.sendStatus(500);
   }
 });
 
 dbController.get('/get-tables-details', async (req, res) => {
-  const { user, container, error } = getUserAndContainer(req);
-  if (error) {
-    return res.status(error.status).send(error.message);
-  }
-
   try {
+    const { user, container, error } = getUserAndContainer(req);
+    if (error) {
+      return res.status(error.status).send({ error: error.message });
+    }
+
     const tables = await userDbService.getTablesDetails({
       userId: user._id,
       container,
@@ -101,14 +111,14 @@ dbController.get('/get-tables-details', async (req, res) => {
 });
 
 dbController.post('/build-query', async (req, res) => {
-  const { user, container, error } = getUserAndContainer(req);
-  if (error) {
-    return res.status(error.status).send(error.message);
-  }
-
-  const userInput: IBuildQueryUserInput = req.body?.query;
-
   try {
+    const { user, container, error } = getUserAndContainer(req);
+    if (error) {
+      return res.status(error.status).send({ error: error.message });
+    }
+
+    const userInput: IBuildQueryUserInput = req.body?.query;
+
     const sqlQuery = userDbService.buildQuery(userInput);
 
     const execQueryOptions = {
@@ -126,6 +136,28 @@ dbController.post('/build-query', async (req, res) => {
   } catch (err) {
     console.error('Build query error:', err);
     res.status(500).send('Internal Server Error');
+  }
+});
+
+dbController.post('/end-session', async (req, res) => {
+  try {
+    const { user, container, error } = getUserAndContainer(req);
+    if (error) {
+      return res.status(error.status).send({ error: error.message });
+    }
+    const response = await userDbService.endSession({
+      userId: user._id,
+      container,
+    });
+
+    if (response.error) {
+      throw new Error(response.error);
+    }
+
+    res.sendStatus(200);
+  } catch (error) {
+    console.error('End session error:', error);
+    return res.sendStatus(500);
   }
 });
 
