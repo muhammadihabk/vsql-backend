@@ -1,7 +1,7 @@
 import Dockerode from 'dockerode';
 
 export interface IUserQuery {
-  query: string;
+  query: string | IBuildQueryUserInput;
   options: {
     database: string;
   };
@@ -25,4 +25,26 @@ export enum QueryType {
 export interface IUserContainerOptions {
   userId: string;
   container: Dockerode.Container;
+}
+
+export interface IBuildQueryUserInput {
+  query: {
+    columns: string[];
+    relationships?: {
+      [table: string]: {
+        [referencedTable: string]: {
+          columns: [string, string];
+          joinType?: string;
+        };
+      };
+    };
+  };
+  options: {
+    orderBy?: string[];
+    limit?: number;
+  };
+}
+
+export interface ITableRow {
+  [columnName: string]: string;
 }

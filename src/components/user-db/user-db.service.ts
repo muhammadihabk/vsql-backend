@@ -1,6 +1,8 @@
 import { docker } from '../../config/user-docker/user-docker.config';
 import {
+  IBuildQueryUserInput,
   IExecQueryOptions,
+  ITableRow,
   IUserContainerOptions,
   QueryType,
 } from './user-db.types';
@@ -16,7 +18,7 @@ async function createDBUser(options: any) {
 
   // Check if user already exists in the database
   const checkUserSql = `SELECT EXISTS(SELECT 1 FROM mysql.user WHERE user = '${userName}') AS user_exists;`;
-  const checkUserResult = await execQuery({
+  const { response: checkUserResult } = await execQuery({
     userId: process.env.DB_ROOT_USER!,
     container,
     query: {
@@ -197,24 +199,24 @@ async function getTablesDetails(options: IUserContainerOptions) {
     query: {
       text: `
         SELECT 
-            t.TABLE_NAME as table_name,
-            c.COLUMN_NAME as column_name,
-            c.COLUMN_KEY as column_key,
-            kcu.REFERENCED_TABLE_NAME as referenced_table,
-            kcu.REFERENCED_COLUMN_NAME as referenced_column
+          t.TABLE_NAME as table_name,
+          c.COLUMN_NAME as column_name,
+          c.COLUMN_KEY as column_key,
+          kcu.REFERENCED_TABLE_NAME as referenced_table,
+          kcu.REFERENCED_COLUMN_NAME as referenced_column
         FROM 
-            information_schema.TABLES t
+          information_schema.TABLES t
         LEFT JOIN 
-            information_schema.COLUMNS c ON t.TABLE_SCHEMA = c.TABLE_SCHEMA 
-            AND t.TABLE_NAME = c.TABLE_NAME
+          information_schema.COLUMNS c ON t.TABLE_SCHEMA = c.TABLE_SCHEMA 
+          AND t.TABLE_NAME = c.TABLE_NAME
         LEFT JOIN 
-            information_schema.KEY_COLUMN_USAGE kcu ON c.TABLE_SCHEMA = kcu.TABLE_SCHEMA 
-            AND c.TABLE_NAME = kcu.TABLE_NAME 
-            AND c.COLUMN_NAME = kcu.COLUMN_NAME
-            AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
+          information_schema.KEY_COLUMN_USAGE kcu ON c.TABLE_SCHEMA = kcu.TABLE_SCHEMA 
+          AND c.TABLE_NAME = kcu.TABLE_NAME 
+          AND c.COLUMN_NAME = kcu.COLUMN_NAME
+          AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
         WHERE 
-            t.TABLE_SCHEMA = '${dbName}'
-            AND t.TABLE_TYPE = 'BASE TABLE'
+          t.TABLE_SCHEMA = '${dbName}'
+          AND t.TABLE_TYPE = 'BASE TABLE'
         ;
     `,
     },
@@ -246,8 +248,91 @@ function parseGetTablesDetailsResponse(data: string) {
     }, {});
 }
 
+function buildQuery(options: IBuildQueryUserInput) {
+  const { columns, relationships } = options.query;
+  const { orderBy, limit } = options.options;
+
+  // Extract unique table names from columns
+  const tablesInColumns = new Set(columns.map((col) => col.split('.')[0]));
+
+  const selectClause = `SELECT ${columns.join(', ')}`;
+
+  // first table that appears in columns
+  const mainTable = columns[0].split('.')[0];
+  const fromClause = `FROM ${mainTable}`;
+
+  const joinClauses: string[] = [];
+  const processedJoins = new Set();
+
+  if (relationships) {
+    Object.entries(relationships).forEach(([table, relations]) => {
+      Object.entries(relations).forEach(([referencedTable, details]) => {
+        let {
+          columns: [fkCol, refCol],
+          joinType = 'INNER',
+        } = details;
+        const joinKey = `${table}-${referencedTable}`;
+        joinType = joinType.toUpperCase();
+
+        // Avoid duplicate joins and only join tables that are in options.query.columns
+        if (
+          !processedJoins.has(joinKey) &&
+          tablesInColumns.has(table) &&
+          tablesInColumns.has(referencedTable) &&
+          table !== referencedTable
+        ) {
+          joinClauses.push(
+            `${joinType} JOIN ${referencedTable} ON ${table}.${fkCol} = ${referencedTable}.${refCol}`
+          );
+          processedJoins.add(joinKey);
+        }
+      });
+    });
+  }
+  const parts = [selectClause, fromClause, ...joinClauses];
+
+  if (orderBy && orderBy.length > 0) {
+    parts.push(`ORDER BY ${orderBy.join(', ')}`);
+  }
+
+  if (limit && limit > 0) {
+    parts.push(`LIMIT ${limit}`);
+  }
+
+  return parts.join('\n');
+}
+
+function parseQueryResultResponse(data: string) {
+  const lines = data.trim().split('\n');
+
+  if (lines.length === 0) {
+    return { columns: [], rows: [], totalRows: 0 };
+  }
+
+  const columns = lines[0].split('\t');
+
+  const rows: ITableRow[] = lines.slice(1).map((line) => {
+    const values = line.split('\t');
+    const row: ITableRow = {};
+
+    columns.forEach((column, index) => {
+      const value = values[index];
+      row[column] = value;
+    });
+
+    return row;
+  });
+
+  return {
+    columns,
+    rows,
+  };
+}
+
 export default {
   createDBUser,
   execQuery,
   getTablesDetails,
+  buildQuery,
+  parseQueryResultResponse,
 };

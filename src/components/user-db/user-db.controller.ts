@@ -1,7 +1,7 @@
 import { Router, Request } from 'express';
 import userDbService from './user-db.service';
 import containersInitConfig from '../../config/user-docker/containers-init.config';
-import { IUserQuery, QueryType } from './user-db.types';
+import { IUserQuery, QueryType, IBuildQueryUserInput } from './user-db.types';
 
 const dbController = Router();
 
@@ -45,7 +45,7 @@ dbController.post('/build-schema', async (req, res) => {
     userId: user._id,
     container,
     query: {
-      text: options.query,
+      text: options.query as string,
       type: QueryType.DDL,
     },
   };
@@ -66,13 +66,15 @@ dbController.post('/exec-query', async (req, res) => {
       userId: user._id,
       container,
       query: {
-        text: options.query,
+        text: options.query as string,
         type: QueryType.DML,
       },
     };
-    const result = await userDbService.execQuery(execQueryOptions);
+    const { response } = await userDbService.execQuery(execQueryOptions);
 
-    res.json(result);
+    const parsedResponse = userDbService.parseQueryResultResponse(response);
+
+    return res.json({ response: parsedResponse });
   } catch (err) {
     console.error('Exec query error:', err);
     res.status(500).send('Internal Server Error');
@@ -94,6 +96,35 @@ dbController.get('/get-tables-details', async (req, res) => {
     return res.json({ tables });
   } catch (err) {
     console.error('Get tables error:', err);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+dbController.post('/build-query', async (req, res) => {
+  const { user, container, error } = getUserAndContainer(req);
+  if (error) {
+    return res.status(error.status).send(error.message);
+  }
+
+  const userInput: IBuildQueryUserInput = req.body?.query;
+
+  try {
+    const sqlQuery = userDbService.buildQuery(userInput);
+
+    const execQueryOptions = {
+      userId: user._id,
+      container,
+      query: {
+        text: sqlQuery,
+      },
+    };
+    const { response } = await userDbService.execQuery(execQueryOptions);
+
+    const parsedResponse = userDbService.parseQueryResultResponse(response);
+
+    return res.json({ response: parsedResponse });
+  } catch (err) {
+    console.error('Build query error:', err);
     res.status(500).send('Internal Server Error');
   }
 });
