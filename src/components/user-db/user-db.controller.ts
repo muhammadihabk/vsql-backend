@@ -79,4 +79,23 @@ dbController.post('/exec-query', async (req, res) => {
   }
 });
 
+dbController.get('/get-tables-details', async (req, res) => {
+  const { user, container, error } = getUserAndContainer(req);
+  if (error) {
+    return res.status(error.status).send(error.message);
+  }
+
+  try {
+    const tables = await userDbService.getTablesDetails({
+      userId: user._id,
+      container,
+    });
+
+    return res.json({ tables });
+  } catch (err) {
+    console.error('Get tables error:', err);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
 export default dbController;

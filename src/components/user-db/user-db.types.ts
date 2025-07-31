@@ -12,7 +12,7 @@ export interface IExecQueryOptions {
   container: Dockerode.Container;
   query: {
     text: string;
-    type: QueryType;
+    type?: QueryType;
   };
 }
 
@@ -20,4 +20,9 @@ export enum QueryType {
   DDL = 'DDL',
   DML = 'DML',
   Root = 'Root',
+}
+
+export interface IUserContainerOptions {
+  userId: string;
+  container: Dockerode.Container;
 }

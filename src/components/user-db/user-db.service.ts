@@ -1,5 +1,9 @@
 import { docker } from '../../config/user-docker/user-docker.config';
-import { IExecQueryOptions, QueryType } from './user-db.types';
+import {
+  IExecQueryOptions,
+  IUserContainerOptions,
+  QueryType,
+} from './user-db.types';
 
 async function createDBUser(options: any) {
   // TODO: Maybe make DB_USER_PASSWORD a seed for the password
@@ -21,7 +25,7 @@ async function createDBUser(options: any) {
     },
   });
   const lines = checkUserResult.split('\n');
-  const userExistsIndex = lines.findIndex((line) =>
+  const userExistsIndex = lines.findIndex((line: any) =>
     line.includes('user_exists')
   );
   const userExists = lines[userExistsIndex + 1] === '1';
@@ -143,7 +147,11 @@ async function parseDockerStream(stream: any, exec: any): Promise<any> {
           let sanitizedError = getSanitizedSQLError(filteredStderr);
 
           if (inspectData.ExitCode !== 0 || sanitizedError) {
-            return resolve({ error: sanitizedError || `Command exited with code ${inspectData.ExitCode}` });
+            return resolve({
+              error:
+                sanitizedError ||
+                `Command exited with code ${inspectData.ExitCode}`,
+            });
           }
 
           if (filteredStderr) {
@@ -165,9 +173,7 @@ async function parseDockerStream(stream: any, exec: any): Promise<any> {
 
       stream.resume();
     });
-  } catch (error) {
-    
-  }
+  } catch (error) {}
 }
 
 function getSanitizedSQLError(errorMessage: any) {
@@ -180,7 +186,68 @@ function getSanitizedSQLError(errorMessage: any) {
   }
 }
 
+async function getTablesDetails(options: IUserContainerOptions) {
+  const { userId, container } = options;
+
+  const dbName = generateDBName(userId);
+
+  const execQueryOptions = {
+    userId,
+    container,
+    query: {
+      text: `
+        SELECT 
+            t.TABLE_NAME as table_name,
+            c.COLUMN_NAME as column_name,
+            c.COLUMN_KEY as column_key,
+            kcu.REFERENCED_TABLE_NAME as referenced_table,
+            kcu.REFERENCED_COLUMN_NAME as referenced_column
+        FROM 
+            information_schema.TABLES t
+        LEFT JOIN 
+            information_schema.COLUMNS c ON t.TABLE_SCHEMA = c.TABLE_SCHEMA 
+            AND t.TABLE_NAME = c.TABLE_NAME
+        LEFT JOIN 
+            information_schema.KEY_COLUMN_USAGE kcu ON c.TABLE_SCHEMA = kcu.TABLE_SCHEMA 
+            AND c.TABLE_NAME = kcu.TABLE_NAME 
+            AND c.COLUMN_NAME = kcu.COLUMN_NAME
+            AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
+        WHERE 
+            t.TABLE_SCHEMA = '${dbName}'
+            AND t.TABLE_TYPE = 'BASE TABLE'
+        ;
+    `,
+    },
+  };
+
+  const response = await execQuery(execQueryOptions);
+  const parsed = parseGetTablesDetailsResponse(response.response);
+
+  return parsed;
+}
+
+function parseGetTablesDetailsResponse(data: string) {
+  return data
+    .trim()
+    .split('\n')
+    .slice(1)
+    .reduce((schema: any, row) => {
+      const [table, column, , refTable, refColumn] = row.split('\t');
+
+      schema[table] ??= { columns: [] };
+      schema[table].columns.push(column);
+
+      if (refTable !== 'NULL' && refColumn !== 'NULL') {
+        schema[table].relationships ??= {};
+        schema[table].relationships[refTable] = [column, refColumn];
+      }
+
+      return schema;
+    }, {});
+}
+
 export default {
   createDBUser,
   execQuery,
+  getTablesDetails,
 };
