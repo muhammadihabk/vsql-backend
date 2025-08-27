@@ -257,7 +257,7 @@ function parseGetTablesDetailsResponse(data: string) {
 
 function buildQuery(options: IBuildQueryUserInput) {
   const { columns, relationships } = options.query;
-  const { orderBy, limit } = options.options;
+  const queryOptions = options.options;
 
   // Extract unique table names from columns
   const tablesInColumns = new Set(columns.map((col) => col.split('.')[0]));
@@ -298,12 +298,12 @@ function buildQuery(options: IBuildQueryUserInput) {
   }
   const parts = [selectClause, fromClause, ...joinClauses];
 
-  if (orderBy && orderBy.length > 0) {
-    parts.push(`ORDER BY ${orderBy.join(', ')}`);
+  if (queryOptions?.orderBy && queryOptions.orderBy.length > 0) {
+    parts.push(`ORDER BY ${queryOptions.orderBy.join(', ')}`);
   }
 
-  if (limit && limit > 0) {
-    parts.push(`LIMIT ${limit}`);
+  if (queryOptions?.limit && queryOptions.limit > 0) {
+    parts.push(`LIMIT ${queryOptions.limit}`);
   }
 
   return parts.join('\n');
