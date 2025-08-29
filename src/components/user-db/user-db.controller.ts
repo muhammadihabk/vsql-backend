@@ -91,7 +91,7 @@ dbController.post('/exec-query', async (req, res) => {
   }
 });
 
-dbController.get('/get-tables-details', async (req, res) => {
+dbController.post('/get-tables-details', async (req, res) => {
   try {
     const { user, container, error } = getUserAndContainer(req);
     if (error) {

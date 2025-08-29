@@ -248,7 +248,7 @@ function parseGetTablesDetailsResponse(data: string) {
 
       if (refTable !== 'NULL' && refColumn !== 'NULL') {
         schema[table].relationships ??= {};
-        schema[table].relationships[refTable] = [column, refColumn];
+        schema[table].relationships[column] = [refTable, refColumn];
       }
 
       return schema;
