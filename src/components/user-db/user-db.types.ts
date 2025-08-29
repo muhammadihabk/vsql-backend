@@ -22,7 +22,7 @@ export interface IUserContainerOptions {
 }
 
 export interface IBuildQueryUserInput {
-  query: {
+  definition: {
     columns: string[];
     relationships?: {
       [table: string]: {

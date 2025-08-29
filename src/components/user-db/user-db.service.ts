@@ -256,15 +256,12 @@ function parseGetTablesDetailsResponse(data: string) {
 }
 
 function buildQuery(options: IBuildQueryUserInput) {
-  const { columns, relationships } = options.query;
+  const { columns, relationships } = options.definition;
   const queryOptions = options.options;
 
-  // Extract unique table names from columns
   const tablesInColumns = new Set(columns.map((col) => col.split('.')[0]));
 
-  const selectClause = `SELECT ${columns.join(', ')}`;
-
-  // first table that appears in columns
+  // first table that appears in columns is the main table
   const mainTable = columns[0].split('.')[0];
   const fromClause = `FROM ${mainTable}`;
 
@@ -296,7 +293,7 @@ function buildQuery(options: IBuildQueryUserInput) {
       });
     });
   }
-  const parts = [selectClause, fromClause, ...joinClauses];
+  let parts = [];
 
   if (queryOptions?.orderBy && queryOptions.orderBy.length > 0) {
     parts.push(`ORDER BY ${queryOptions.orderBy.join(', ')}`);
@@ -306,6 +303,13 @@ function buildQuery(options: IBuildQueryUserInput) {
     parts.push(`LIMIT ${queryOptions.limit}`);
   }
 
+  const newCols = columns.map((col) => {
+    const [tableName, column] = col.split('.');
+    return (col += ` AS ${tableName}_${column}`);
+  });
+  const selectClause = `SELECT ${newCols.join(', ')}`;
+
+  parts.push(...[selectClause, fromClause, ...joinClauses]);
   return parts.join('\n');
 }
 
