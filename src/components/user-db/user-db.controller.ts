@@ -6,7 +6,7 @@ import { IUserQuery, QueryType, IBuildQueryUserInput } from './user-db.types';
 const dbController = Router();
 
 function getUserAndContainer(req: Request) {
-  const user = req.user;
+  const user: any = req.user;
   if (!user) {
     return { error: { status: 401, message: 'Unauthorized' } };
   }

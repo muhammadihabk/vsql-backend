@@ -1,0 +1,28 @@
+services:
+  backend:
+    build:
+      context: .
+      target: production
+    depends_on:
+      - mongodb
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:8.0.4
+    env_file: .env
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+  mongo_config:
