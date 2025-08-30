@@ -237,7 +237,7 @@ async function getTablesDetails(options: IUserContainerOptions) {
 
 function parseGetTablesDetailsResponse(data: string) {
   return data
-    .trim()
+    ?.trim()
     .split('\n')
     .slice(1)
     .reduce((schema: any, row) => {
