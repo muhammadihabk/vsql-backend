@@ -58,6 +58,7 @@ authController.post('/signin', async (req, res) => {
   res
     .cookie('authToken', token, {
       httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
       maxAge: Number(process.env.JWT_EXPIRATION),
     })
     .json({

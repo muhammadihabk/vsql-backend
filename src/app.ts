@@ -9,7 +9,10 @@ const app = express();
 
 app.use(
   cors({
-    origin: process.env.CLIENT_URL ?? 'http://localhost:3001',
+    origin:
+      process.env.NODE_ENV === 'production'
+        ? process.env.CLIENT_URL
+        : 'http://localhost:3001',
     credentials: true,
   })
 );
